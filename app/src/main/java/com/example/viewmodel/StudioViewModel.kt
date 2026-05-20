@@ -157,6 +157,7 @@ class StudioViewModel(
 
     fun setVoice(voiceId: String) {
         _voice.value = voiceId
+        ttsManager.setVoiceProfile(voiceId)
     }
 
     fun setEmotion(emotionKey: String) {
@@ -274,9 +275,11 @@ class StudioViewModel(
             val tempFile = java.io.File(context.cacheDir, "last_generated_audio.wav")
             val selectedEmotion = EMOTIONS.find { it.key == finalEmotionKey } ?: EMOTIONS[0]
             
+            ttsManager.setLanguage(_language.value)
+            ttsManager.setVoiceProfile(newItem.voice)
             ttsManager.downloadToFile(_text.value, selectedEmotion, _speed.value, tempFile, newItem.id) { success ->
-                if (success) {
-                    viewModelScope.launch(Dispatchers.Main) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    if (success) {
                         try {
                             mediaPlayer?.release()
                             mediaPlayer = MediaPlayer().apply {
@@ -285,9 +288,13 @@ class StudioViewModel(
                                     prepareAsync()
                                     setOnPreparedListener {
                                         _playbackDuration.value = duration
-                                        start()
-                                        _isAudioPlaying.value = true
-                                        _status.value = "playing"
+                                        try {
+                                            start()
+                                            _isAudioPlaying.value = true
+                                            _status.value = "playing"
+                                        } catch (e: Exception) {
+                                            _status.value = "idle"
+                                        }
                                     }
                                     setOnCompletionListener {
                                         _isAudioPlaying.value = false
@@ -309,10 +316,10 @@ class StudioViewModel(
                             _status.value = "idle"
                             android.widget.Toast.makeText(context, "Error playing audio", android.widget.Toast.LENGTH_SHORT).show()
                         }
+                    } else {
+                        _status.value = "idle"
+                        android.widget.Toast.makeText(context, "Failed to generate audio", android.widget.Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    _status.value = "idle"
-                    android.widget.Toast.makeText(context, "Failed to generate audio", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -373,10 +380,14 @@ class StudioViewModel(
         playbackTickerJob?.cancel()
         playbackTickerJob = viewModelScope.launch {
             while (true) {
-                mediaPlayer?.let {
-                    if (it.isPlaying) {
-                        _playbackPosition.value = it.currentPosition
+                try {
+                    mediaPlayer?.let {
+                        if (it.isPlaying) {
+                            _playbackPosition.value = it.currentPosition
+                        }
                     }
+                } catch (e: Exception) {
+                    // Ignore transient exceptions if player is in intermediate state
                 }
                 delay(100)
             }
@@ -389,26 +400,34 @@ class StudioViewModel(
     }
 
     fun togglePlayback() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-                _isAudioPlaying.value = false
-                _status.value = "idle"
-                stopTicker()
-            } else {
-                it.start()
-                _isAudioPlaying.value = true
-                _status.value = "playing"
-                startTicker()
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                    _isAudioPlaying.value = false
+                    _status.value = "idle"
+                    stopTicker()
+                } else {
+                    it.start()
+                    _isAudioPlaying.value = true
+                    _status.value = "playing"
+                    startTicker()
+                }
             }
+        } catch (e: Exception) {
+            android.util.Log.e("StudioViewModel", "Error in togglePlayback", e)
         }
     }
 
     fun stopPlayback() {
         ttsManager.stop()
-        mediaPlayer?.let {
-            if (it.isPlaying) it.stop()
-            it.release()
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("StudioViewModel", "Error in stopPlayback", e)
         }
         mediaPlayer = null
         _isAudioPlaying.value = false
@@ -434,28 +453,46 @@ class StudioViewModel(
     }
 
     fun downloadAudio(item: HistoryEntity) {
+        _status.update { "generating" }
         viewModelScope.launch {
             val fileName = "Auditext_${item.id.take(8)}_${System.currentTimeMillis()}.wav"
             val tempFile = java.io.File(context.cacheDir, fileName)
             
             val selectedEmotion = EMOTIONS.find { it.key == item.emotion } ?: EMOTIONS[0]
             
-            val result = ttsManager.downloadToFile(item.text, selectedEmotion, _speed.value, tempFile, item.id)
+            ttsManager.setLanguage(item.language)
+            ttsManager.setVoiceProfile(item.voice)
             
-            if (result == android.speech.tts.TextToSpeech.SUCCESS) {
-                val publicUri = saveFileToPublicDownloads(tempFile, fileName)
-                if (publicUri != null) {
-                    val updatedItem = item.copy(
-                        isDownloaded = true,
-                        localFilePath = publicUri.toString()
-                    )
-                    historyDao.insertHistory(updatedItem)
-                    android.widget.Toast.makeText(context, "Audio saved to Downloads!", android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    android.widget.Toast.makeText(context, "Failed to save to public storage.", android.widget.Toast.LENGTH_SHORT).show()
+            val result = ttsManager.downloadToFile(item.text, selectedEmotion, _speed.value, tempFile, item.id) { success ->
+                viewModelScope.launch(Dispatchers.Main) {
+                    _status.update { "idle" }
+                    if (success) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val publicUri = saveFileToPublicDownloads(tempFile, fileName)
+                            withContext(Dispatchers.Main) {
+                                if (publicUri != null) {
+                                    val updatedItem = item.copy(
+                                        isDownloaded = true,
+                                        localFilePath = publicUri.toString()
+                                    )
+                                    viewModelScope.launch {
+                                        historyDao.insertHistory(updatedItem)
+                                    }
+                                    android.widget.Toast.makeText(context, "Audio saved to Downloads!", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Failed to save to public storage.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    } else {
+                        android.widget.Toast.makeText(context, "Failed to download audio.", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                 }
-            } else {
-                android.widget.Toast.makeText(context, "Failed to download audio.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            
+            if (result != android.speech.tts.TextToSpeech.SUCCESS) {
+                _status.update { "idle" }
+                android.widget.Toast.makeText(context, "Failed to initiate audio download.", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }

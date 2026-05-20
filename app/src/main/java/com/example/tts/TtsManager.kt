@@ -63,6 +63,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     private var voiceBasePitch = 1.0f
 
     fun setLanguage(lang: String) {
+        if (!isInitialized) return
         val locale = when (lang) {
             "Spanish" -> Locale.Builder().setLanguage("es").build()
             "French" -> Locale.Builder().setLanguage("fr").build()
@@ -98,13 +99,36 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             val voices = tts?.voices
             val currentLang = tts?.language
             if (voices != null && currentLang != null) {
-                val matchingVoices = voices.filter { it.locale.language == currentLang.language && !it.isNetworkConnectionRequired }
-                // For different voice profiles, try to mix up male/female variants if available, or just use the highest quality
-                val selectedVoice = matchingVoices.firstOrNull { it.name.contains("network", ignoreCase = true) } 
-                    ?: matchingVoices.firstOrNull { it.quality >= 400 } // QUALITY_HIGH = 400
-                    ?: matchingVoices.firstOrNull()
+                // Find all voices for current language (excluding network connection required to ensure offline/local works)
+                val matchingVoices = voices.filter { 
+                    it.locale != null && it.locale.language == currentLang.language && !it.isNetworkConnectionRequired 
+                }.sortedBy { it.name }
                 
-                if (selectedVoice != null) {
+                if (matchingVoices.isNotEmpty()) {
+                    val targetGender = when (voiceId) {
+                        "nova", "shimmer" -> "female"
+                        "echo", "fable", "onyx" -> "male"
+                        else -> ""
+                    }
+                    
+                    val voiceIndex = when (voiceId) {
+                        "alloy" -> 0
+                        "echo" -> 1
+                        "fable" -> 2
+                        "onyx" -> 3
+                        "nova" -> 4
+                        "shimmer" -> 5
+                        else -> 0
+                    }
+                    
+                    // Filter or find a voice matching the target gender in its name, or fallback dynamically
+                    val selectedVoice = if (targetGender.isNotEmpty()) {
+                        matchingVoices.firstOrNull { it.name.contains(targetGender, ignoreCase = true) }
+                            ?: matchingVoices[voiceIndex % matchingVoices.size]
+                    } else {
+                        matchingVoices[voiceIndex % matchingVoices.size]
+                    }
+                    
                     tts?.voice = selectedVoice
                 }
             }
@@ -124,7 +148,8 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
         tts?.setPitch(finalPitch)
         
-        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "auditext_utterance")
+        val params = android.os.Bundle()
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "auditext_utterance")
         return result == TextToSpeech.SUCCESS
     }
 
@@ -143,7 +168,8 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
         tts?.setPitch(finalPitch)
         
-        return tts?.synthesizeToFile(text, null, file, "synth_$utteranceId") ?: TextToSpeech.ERROR
+        val params = android.os.Bundle()
+        return tts?.synthesizeToFile(text, params, file, "synth_$utteranceId") ?: TextToSpeech.ERROR
     }
 
     fun shutdown() {
