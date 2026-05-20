@@ -477,12 +477,14 @@ class StudioViewModel(
                     }
                     "ElevenLabs" -> {
                         val voiceMap = mapOf(
-                            "alloy" to "21m00Tcm4TlvDq8ikWAM",
-                            "echo" to "2EiwX775D0u386zkn0gR",
-                            "fable" to "AZnzlk1XvdvUeBnXmlld",
-                            "onyx" to "ErXwobaYiN019PkySvjV",
-                            "nova" to "EXAVITQu4vr4xnSDxMaL",
-                            "shimmer" to "MF3m74ZOqHOdhvCO760Q"
+                            // Female
+                            "alloy" to "sPGBB3cm0SPHjSc019B9", // Grace
+                            "nova" to "EXAVITQu4vr4xnSDxMaL", // Nova
+                            "shimmer" to "MF3m74ZOqHOdhvCO760Q", // Shimmer
+                            // Male
+                            "echo" to "pNInz6obpgDaGzMKJOJb", // Adam
+                            "fable" to "ErXwobaYiN019PkySvjV", // Antoni
+                            "onyx" to "VR6AewLTigWG4xSOukaG" // Arnold
                         )
                         val selectedVoiceId = voiceMap[voiceId] ?: "21m00Tcm4TlvDq8ikWAM"
                         val json = """
