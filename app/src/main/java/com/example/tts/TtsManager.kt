@@ -23,6 +23,11 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
 
     private var onSynthesisComplete: ((Boolean) -> Unit)? = null
 
+    private var currentVoiceId = "alloy"
+    private var currentLangName = "English"
+    private var voiceBasePitch = 1.0f
+    private var voiceBaseSpeed = 1.0f
+
     init {
         tts = TextToSpeech(context, this)
     }
@@ -30,6 +35,11 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             isInitialized = true
+            
+            // Reapply the active language and voice profile now that we are initialized!
+            setLanguage(currentLangName)
+            setVoiceProfile(currentVoiceId)
+
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     if (utteranceId?.startsWith("synth_") == true) {
@@ -60,9 +70,8 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    private var voiceBasePitch = 1.0f
-
     fun setLanguage(lang: String) {
+        currentLangName = lang
         if (!isInitialized) return
         val locale = when (lang) {
             "Spanish" -> Locale.Builder().setLanguage("es").build()
@@ -77,41 +86,71 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             else -> Locale.US
         }
         tts?.setLanguage(locale)
+        applyVoiceSelection()
     }
 
     fun setVoiceProfile(voiceId: String) {
+        currentVoiceId = voiceId
         if (!isInitialized) return
         
-        // Fallback simulation for distinct voices using pitch modifiers
-        voiceBasePitch = when (voiceId) {
-            "nova" -> 1.15f
-            "alloy" -> 1.0f
-            "echo" -> 0.85f
-            "fable" -> 1.05f
-            "onyx" -> 0.7f
-            "shimmer" -> 1.25f
-            else -> 1.0f
+        // Calibrate pitch and speed perfectly for distinct character personalities
+        when (voiceId) {
+            "nova" -> {
+                voiceBasePitch = 1.35f
+                voiceBaseSpeed = 1.15f
+            }
+            "alloy" -> {
+                voiceBasePitch = 1.00f
+                voiceBaseSpeed = 1.00f
+            }
+            "echo" -> {
+                voiceBasePitch = 0.82f
+                voiceBaseSpeed = 0.88f
+            }
+            "fable" -> {
+                voiceBasePitch = 0.94f
+                voiceBaseSpeed = 1.04f
+            }
+            "onyx" -> {
+                voiceBasePitch = 0.65f
+                voiceBaseSpeed = 0.80f
+            }
+            "shimmer" -> {
+                voiceBasePitch = 1.48f
+                voiceBaseSpeed = 1.10f
+            }
+            else -> {
+                voiceBasePitch = 1.00f
+                voiceBaseSpeed = 1.00f
+            }
         }
+        
         tts?.setPitch(voiceBasePitch)
+        applyVoiceSelection()
+    }
 
+    private fun applyVoiceSelection() {
+        if (!isInitialized) return
         try {
-            // Attempt to select a high-quality human-like voice if available for the current language
             val voices = tts?.voices
             val currentLang = tts?.language
             if (voices != null && currentLang != null) {
-                // Find all voices for current language (excluding network connection required to ensure offline/local works)
-                val matchingVoices = voices.filter { 
-                    it.locale != null && it.locale.language == currentLang.language && !it.isNetworkConnectionRequired 
+                // Find matching voices under the current language
+                // 1. First try to get offline-only voices for best local reliability
+                var matchingVoices = voices.filter { 
+                    it.locale != null && it.locale.language == currentLang.language && !it.isNetworkConnectionRequired
                 }.sortedBy { it.name }
                 
+                // 2. Fall back to include online network voices if offline options are too limited or unavailable
+                if (matchingVoices.size < 4) {
+                    matchingVoices = voices.filter { 
+                        it.locale != null && it.locale.language == currentLang.language
+                    }.sortedBy { it.name }
+                }
+                
                 if (matchingVoices.isNotEmpty()) {
-                    val targetGender = when (voiceId) {
-                        "nova", "shimmer" -> "female"
-                        "echo", "fable", "onyx" -> "male"
-                        else -> ""
-                    }
-                    
-                    val voiceIndex = when (voiceId) {
+                    // Try to map each voice ID to a distinct index
+                    val voiceIndex = when (currentVoiceId) {
                         "alloy" -> 0
                         "echo" -> 1
                         "fable" -> 2
@@ -121,32 +160,73 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
                         else -> 0
                     }
                     
-                    // Filter or find a voice matching the target gender in its name, or fallback dynamically
-                    val selectedVoice = if (targetGender.isNotEmpty()) {
-                        matchingVoices.firstOrNull { it.name.contains(targetGender, ignoreCase = true) }
-                            ?: matchingVoices[voiceIndex % matchingVoices.size]
-                    } else {
-                        matchingVoices[voiceIndex % matchingVoices.size]
+                    val targetGender = when (currentVoiceId) {
+                        "nova", "shimmer" -> "female"
+                        "echo", "fable", "onyx" -> "male"
+                        else -> ""
+                    }
+                    
+                    // Filter matching voices that represent the target gender if possible
+                    val genderFilteredVoices = when (targetGender) {
+                        "female" -> matchingVoices.filter { 
+                            it.name.contains("female", ignoreCase = true) || 
+                            it.name.contains("fem", ignoreCase = true) || 
+                            it.name.contains("a-local", ignoreCase = true) || 
+                            it.name.contains("c-local", ignoreCase = true) || 
+                            it.name.contains("e-local", ignoreCase = true) || 
+                            it.name.contains("g-local", ignoreCase = true) || 
+                            it.name.contains("i-local", ignoreCase = true)
+                        }
+                        "male" -> matchingVoices.filter {
+                            it.name.contains("male", ignoreCase = true) || 
+                            it.name.contains("masc", ignoreCase = true) || 
+                            it.name.contains("b-local", ignoreCase = true) || 
+                            it.name.contains("d-local", ignoreCase = true) || 
+                            it.name.contains("f-local", ignoreCase = true) || 
+                            it.name.contains("h-local", ignoreCase = true) || 
+                            it.name.contains("j-local", ignoreCase = true)
+                        }
+                        else -> emptyList()
+                    }
+                    
+                    // Assign sub-indices for specific gender roles so different characters do not pick the same voice
+                    val subIndex = when (currentVoiceId) {
+                        "nova" -> 0
+                        "shimmer" -> 1
+                        "echo" -> 0
+                        "fable" -> 1
+                        "onyx" -> 2
+                        else -> 0
+                    }
+                    
+                    var selectedVoice = if (genderFilteredVoices.isNotEmpty()) {
+                        genderFilteredVoices[subIndex % genderFilteredVoices.size]
+                    } else null
+                    
+                    if (selectedVoice == null) {
+                        // Fallback to distinct index distribution across the list
+                        selectedVoice = matchingVoices[voiceIndex % matchingVoices.size]
                     }
                     
                     tts?.voice = selectedVoice
+                    Log.d("TtsManager", "Applied physical voice: ${selectedVoice.name} for $currentVoiceId")
                 }
             }
         } catch (e: Exception) {
-            // Ignore if voices cannot be accessed
+            Log.e("TtsManager", "Error in applyVoiceSelection", e)
         }
     }
 
     fun speak(text: String, emotion: Emotion, customSpeed: Float): Boolean {
         if (!isInitialized) return false
         
-        // Emotion provides a base speed modifier, customSpeed scales it further.
-        val finalSpeed = (emotion.speed * customSpeed).coerceIn(0.5f, 2.0f)
+        val finalSpeed = (emotion.speed * customSpeed * voiceBaseSpeed).coerceIn(0.5f, 2.0f)
         tts?.setSpeechRate(finalSpeed)
         
-        // Combine voice base pitch with emotional pitch
         val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
         tts?.setPitch(finalPitch)
+        
+        applyVoiceSelection()
         
         val params = android.os.Bundle()
         val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "auditext_utterance")
@@ -162,11 +242,13 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         if (!isInitialized) return TextToSpeech.ERROR
         
         onSynthesisComplete = callback
-        val finalSpeed = (emotion.speed * customSpeed).coerceIn(0.5f, 2.0f)
+        val finalSpeed = (emotion.speed * customSpeed * voiceBaseSpeed).coerceIn(0.5f, 2.0f)
         tts?.setSpeechRate(finalSpeed)
 
         val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
         tts?.setPitch(finalPitch)
+        
+        applyVoiceSelection()
         
         val params = android.os.Bundle()
         return tts?.synthesizeToFile(text, params, file, "synth_$utteranceId") ?: TextToSpeech.ERROR

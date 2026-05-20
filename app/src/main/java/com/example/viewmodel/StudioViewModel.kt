@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import java.util.UUID
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -187,9 +189,9 @@ class StudioViewModel(
         _isValidating.value = true
         viewModelScope.launch(Dispatchers.IO) {
             val isValid = try {
+                val client = OkHttpClient()
                 when (currentProvider) {
                     "Gemini" -> {
-                        val client = OkHttpClient()
                         val request = Request.Builder()
                             .url("https://generativelanguage.googleapis.com/v1beta/models?key=$key")
                             .build()
@@ -197,7 +199,44 @@ class StudioViewModel(
                             response.isSuccessful
                         }
                     }
-                    else -> true // For others assume valid for now or implement as needed
+                    "OpenAI" -> {
+                        val request = Request.Builder()
+                            .url("https://api.openai.com/v1/models")
+                            .header("Authorization", "Bearer $key")
+                            .build()
+                        client.newCall(request).execute().use { response ->
+                            response.isSuccessful
+                        }
+                    }
+                    "ElevenLabs" -> {
+                        val request = Request.Builder()
+                            .url("https://api.elevenlabs.io/v1/user")
+                            .header("xi-api-key", key)
+                            .build()
+                        client.newCall(request).execute().use { response ->
+                            response.isSuccessful
+                        }
+                    }
+                    "Deepgram" -> {
+                        val request = Request.Builder()
+                            .url("https://api.deepgram.com/v1/projects")
+                            .header("Authorization", "Token $key")
+                            .build()
+                        client.newCall(request).execute().use { response ->
+                            response.isSuccessful
+                        }
+                    }
+                    "Cartesia" -> {
+                        val request = Request.Builder()
+                            .url("https://api.cartesia.ai/voices")
+                            .header("X-API-Key", key)
+                            .header("Cartesia-Version", "2024-06-10")
+                            .build()
+                        client.newCall(request).execute().use { response ->
+                            response.isSuccessful
+                        }
+                    }
+                    else -> true
                 }
             } catch (e: Exception) {
                 false
@@ -275,52 +314,340 @@ class StudioViewModel(
             val tempFile = java.io.File(context.cacheDir, "last_generated_audio.wav")
             val selectedEmotion = EMOTIONS.find { it.key == finalEmotionKey } ?: EMOTIONS[0]
             
-            ttsManager.setLanguage(_language.value)
-            ttsManager.setVoiceProfile(newItem.voice)
-            ttsManager.downloadToFile(_text.value, selectedEmotion, _speed.value, tempFile, newItem.id) { success ->
-                viewModelScope.launch(Dispatchers.Main) {
-                    if (success) {
-                        try {
-                            mediaPlayer?.release()
-                            mediaPlayer = MediaPlayer().apply {
-                                if (tempFile.exists() && tempFile.length() > 0) {
-                                    setDataSource(tempFile.absolutePath)
-                                    prepareAsync()
-                                    setOnPreparedListener {
-                                        _playbackDuration.value = duration
-                                        try {
-                                            start()
-                                            _isAudioPlaying.value = true
-                                            _status.value = "playing"
-                                        } catch (e: Exception) {
-                                            _status.value = "idle"
-                                        }
-                                    }
-                                    setOnCompletionListener {
-                                        _isAudioPlaying.value = false
+            val success = synthesizeAudio(
+                text = _text.value,
+                voiceId = newItem.voice,
+                emotion = selectedEmotion,
+                speed = _speed.value,
+                languageName = _language.value,
+                tempFile = tempFile,
+                utteranceId = newItem.id
+            )
+            
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    try {
+                        mediaPlayer?.release()
+                        mediaPlayer = MediaPlayer().apply {
+                            if (tempFile.exists() && tempFile.length() > 0) {
+                                setDataSource(tempFile.absolutePath)
+                                prepareAsync()
+                                setOnPreparedListener {
+                                    _playbackDuration.value = duration
+                                    try {
+                                        start()
+                                        _isAudioPlaying.value = true
+                                        _status.value = "playing"
+                                    } catch (e: Exception) {
                                         _status.value = "idle"
-                                        stopTicker()
                                     }
-                                    setOnErrorListener { _, what, extra ->
-                                        android.util.Log.e("StudioViewModel", "MediaPlayer Error: $what, $extra")
-                                        _status.value = "idle"
-                                        false
-                                    }
-                                } else {
-                                    _status.value = "idle"
-                                    android.widget.Toast.makeText(context, "Audio file not found or empty", android.widget.Toast.LENGTH_SHORT).show()
                                 }
+                                setOnCompletionListener {
+                                    _isAudioPlaying.value = false
+                                    _status.value = "idle"
+                                    stopTicker()
+                                }
+                                setOnErrorListener { _, what, extra ->
+                                    android.util.Log.e("StudioViewModel", "MediaPlayer Error: $what, $extra")
+                                    _status.value = "idle"
+                                    false
+                                }
+                            } else {
+                                _status.value = "idle"
+                                android.widget.Toast.makeText(context, "Audio file not found or empty", android.widget.Toast.LENGTH_SHORT).show()
                             }
-                            startTicker()
-                        } catch (e: Exception) {
-                            _status.value = "idle"
-                            android.widget.Toast.makeText(context, "Error playing audio", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                    } else {
+                        startTicker()
+                    } catch (e: Exception) {
                         _status.value = "idle"
-                        android.widget.Toast.makeText(context, "Failed to generate audio", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(context, "Error playing audio", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    _status.value = "idle"
+                    android.widget.Toast.makeText(context, "Failed to generate audio", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun getLangCode(lang: String): String {
+        return when (lang) {
+            "Spanish" -> "es-ES"
+            "French" -> "fr-FR"
+            "German" -> "de-DE"
+            "Italian" -> "it-IT"
+            "Japanese" -> "ja-JP"
+            "Korean" -> "ko-KR"
+            "Portuguese" -> "pt-PT"
+            "Chinese" -> "zh-CN"
+            "Hindi" -> "hi-IN"
+            else -> "en-US"
+        }
+    }
+
+    private fun escapeJsonString(str: String): String {
+        val builder = java.lang.StringBuilder()
+        builder.append("\"")
+        for (c in str) {
+            when (c) {
+                '\"' -> builder.append("\\\"")
+                '\\' -> builder.append("\\\\")
+                '/' -> builder.append("\\/")
+                '\b' -> builder.append("\\b")
+                '\n' -> builder.append("\\n")
+                '\r' -> builder.append("\\r")
+                '\t' -> builder.append("\\t")
+                else -> {
+                    if (c < ' ') {
+                        val t = "000" + Integer.toHexString(c.code)
+                        builder.append("\\u").append(t.substring(t.length - 4))
+                    } else {
+                        builder.append(c)
                     }
                 }
+            }
+        }
+        builder.append("\"")
+        return builder.toString()
+    }
+
+    private suspend fun synthesizeAudio(
+        text: String,
+        voiceId: String,
+        emotion: Emotion,
+        speed: Float,
+        languageName: String,
+        tempFile: java.io.File,
+        utteranceId: String
+    ): Boolean {
+        val currentProvider = _provider.value
+        val hasKey = currentApiKey.value.isNotEmpty() || (currentProvider == "Gemini" && com.example.BuildConfig.GEMINI_API_KEY.isNotEmpty() && com.example.BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY")
+        
+        if (currentProvider == "Native (Offline)" || !hasKey) {
+            return suspendCancellableCoroutine { continuation ->
+                ttsManager.setLanguage(languageName)
+                ttsManager.setVoiceProfile(voiceId)
+                val result = ttsManager.downloadToFile(text, emotion, speed, tempFile, utteranceId) { success ->
+                    if (continuation.isActive) {
+                        continuation.resume(success)
+                    }
+                }
+                if (result != android.speech.tts.TextToSpeech.SUCCESS) {
+                    if (continuation.isActive) {
+                        continuation.resume(false)
+                    }
+                }
+            }
+        }
+        
+        return withContext(Dispatchers.IO) {
+            val key = if (currentApiKey.value.isNotEmpty()) currentApiKey.value else com.example.BuildConfig.GEMINI_API_KEY
+            try {
+                val client = OkHttpClient()
+                when (currentProvider) {
+                    "OpenAI" -> {
+                        val json = """
+                            {
+                              "model": "tts-1",
+                              "input": ${escapeJsonString(text)},
+                              "voice": "$voiceId",
+                              "response_format": "mp3",
+                              "speed": $speed
+                            }
+                        """.trimIndent()
+                        val body = okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), json)
+                        val request = Request.Builder()
+                            .url("https://api.openai.com/v1/audio/speech")
+                            .header("Authorization", "Bearer $key")
+                            .post(body)
+                            .build()
+                        
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.byteStream()?.use { input ->
+                                    tempFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    "ElevenLabs" -> {
+                        val voiceMap = mapOf(
+                            "alloy" to "21m00Tcm4TlvDq8ikWAM",
+                            "echo" to "2EiwX775D0u386zkn0gR",
+                            "fable" to "AZnzlk1XvdvUeBnXmlld",
+                            "onyx" to "ErXwobaYiN019PkySvjV",
+                            "nova" to "EXAVITQu4vr4xnSDxMaL",
+                            "shimmer" to "MF3m74ZOqHOdhvCO760Q"
+                        )
+                        val selectedVoiceId = voiceMap[voiceId] ?: "21m00Tcm4TlvDq8ikWAM"
+                        val json = """
+                            {
+                              "text": ${escapeJsonString(text)},
+                              "model_id": "eleven_monolingual_v1",
+                              "voice_settings": {
+                                "stability": 0.5,
+                                "similarity_boost": 0.75
+                              }
+                            }
+                        """.trimIndent()
+                        val body = okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), json)
+                        val request = Request.Builder()
+                            .url("https://api.elevenlabs.io/v1/text-to-speech/$selectedVoiceId")
+                            .header("xi-api-key", key)
+                            .post(body)
+                            .build()
+                        
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.byteStream()?.use { input ->
+                                    tempFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    "Deepgram" -> {
+                        val voiceMap = mapOf(
+                            "alloy" to "aura-asteria-en",
+                            "echo" to "aura-orion-en",
+                            "fable" to "aura-arcas-en",
+                            "onyx" to "aura-perseus-en",
+                            "nova" to "aura-stella-en",
+                            "shimmer" to "aura-athena-en"
+                        )
+                        val deepgramVoice = voiceMap[voiceId] ?: "aura-asteria-en"
+                        val json = """
+                            {
+                              "text": ${escapeJsonString(text)}
+                            }
+                        """.trimIndent()
+                        val body = okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), json)
+                        val request = Request.Builder()
+                            .url("https://api.deepgram.com/v1/speak?model=$deepgramVoice&container=wav")
+                            .header("Authorization", "Token $key")
+                            .post(body)
+                            .build()
+                        
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.byteStream()?.use { input ->
+                                    tempFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    "Cartesia" -> {
+                        val voiceMap = mapOf(
+                            "alloy" to "8254b868-f94d-4886-9a03-7cb52be6ff34",
+                            "echo" to "79a0ae9b-008b-4a57-9d7a-b5e1b559281e",
+                            "fable" to "29be4ea5-6df3-49a0-9799-a868a2bf6cb9",
+                            "onyx" to "69267136-1bdc-411a-a077-42cd2ee403d4",
+                            "nova" to "b311202e-fac6-455c-ae86-fcd05b768a29",
+                            "shimmer" to "c4cdf86f-dbda-4402-995f-9fac06016147"
+                        )
+                        val cartesiaVoiceId = voiceMap[voiceId] ?: "8254b868-f94d-4886-9a03-7cb52be6ff34"
+                        val json = """
+                            {
+                              "model_id": "sonic-english",
+                              "transcript": ${escapeJsonString(text)},
+                              "voice": {
+                                "mode": "id",
+                                "id": "$cartesiaVoiceId"
+                              },
+                              "output_format": {
+                                "container": "wav",
+                                "encoding": "pcm_s16le",
+                                "sample_rate": 24000
+                              }
+                            }
+                        """.trimIndent()
+                        val body = okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), json)
+                        val request = Request.Builder()
+                            .url("https://api.cartesia.ai/tts/bytes")
+                            .header("X-API-Key", key)
+                            .header("Cartesia-Version", "2024-06-10")
+                            .post(body)
+                            .build()
+                        
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.byteStream()?.use { input ->
+                                    tempFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    "Gemini" -> {
+                        val voiceMap = mapOf(
+                            "alloy" to "en-US-Neural2-A",
+                            "echo" to "en-US-Neural2-D",
+                            "fable" to "en-GB-Neural2-B",
+                            "onyx" to "en-US-Neural2-J",
+                            "nova" to "en-US-Neural2-F",
+                            "shimmer" to "en-US-Neural2-H"
+                        )
+                        val voiceName = voiceMap[voiceId] ?: "en-US-Neural2-A"
+                        val langCode = getLangCode(languageName)
+                        val json = """
+                            {
+                              "input": { "text": ${escapeJsonString(text)} },
+                              "voice": {
+                                "languageCode": "$langCode",
+                                "name": "$voiceName"
+                              },
+                              "audioConfig": {
+                                "audioEncoding": "MP3"
+                              }
+                            }
+                        """.trimIndent()
+                        val body = okhttp3.RequestBody.create("application/json; charset=utf-8".toMediaType(), json)
+                        val request = Request.Builder()
+                            .url("https://texttospeech.googleapis.com/v1/text:synthesize?key=$key")
+                            .post(body)
+                            .build()
+                        
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val respText = response.body?.string() ?: ""
+                                val regex = "\"audioContent\":\\s*\"([^\"]+)\"".toRegex()
+                                val match = regex.find(respText)
+                                val base64Data = match?.groupValues?.get(1)
+                                if (base64Data != null) {
+                                    val decodedBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                                    tempFile.writeBytes(decodedBytes)
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        }
+                    }
+                    else -> false
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
             }
         }
     }
@@ -460,39 +787,45 @@ class StudioViewModel(
             
             val selectedEmotion = EMOTIONS.find { it.key == item.emotion } ?: EMOTIONS[0]
             
-            ttsManager.setLanguage(item.language)
-            ttsManager.setVoiceProfile(item.voice)
+            // Temporarily set provider to the historical item's provider for synthesis routing, then restore
+            val originalProvider = _provider.value
+            _provider.value = item.provider
             
-            val result = ttsManager.downloadToFile(item.text, selectedEmotion, _speed.value, tempFile, item.id) { success ->
-                viewModelScope.launch(Dispatchers.Main) {
-                    _status.update { "idle" }
-                    if (success) {
-                        viewModelScope.launch(Dispatchers.IO) {
-                            val publicUri = saveFileToPublicDownloads(tempFile, fileName)
-                            withContext(Dispatchers.Main) {
-                                if (publicUri != null) {
-                                    val updatedItem = item.copy(
-                                        isDownloaded = true,
-                                        localFilePath = publicUri.toString()
-                                    )
-                                    viewModelScope.launch {
-                                        historyDao.insertHistory(updatedItem)
-                                    }
-                                    android.widget.Toast.makeText(context, "Audio saved to Downloads!", android.widget.Toast.LENGTH_SHORT).show()
-                                } else {
-                                    android.widget.Toast.makeText(context, "Failed to save to public storage.", android.widget.Toast.LENGTH_SHORT).show()
+            val success = synthesizeAudio(
+                text = item.text,
+                voiceId = item.voice,
+                emotion = selectedEmotion,
+                speed = _speed.value,
+                languageName = item.language,
+                tempFile = tempFile,
+                utteranceId = item.id
+            )
+            
+            _provider.value = originalProvider
+            
+            withContext(Dispatchers.Main) {
+                _status.update { "idle" }
+                if (success) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val publicUri = saveFileToPublicDownloads(tempFile, fileName)
+                        withContext(Dispatchers.Main) {
+                            if (publicUri != null) {
+                                val updatedItem = item.copy(
+                                    isDownloaded = true,
+                                    localFilePath = publicUri.toString()
+                                )
+                                viewModelScope.launch {
+                                    historyDao.insertHistory(updatedItem)
                                 }
+                                android.widget.Toast.makeText(context, "Audio saved to Downloads!", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Failed to save to public storage.", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         }
-                    } else {
-                        android.widget.Toast.makeText(context, "Failed to download audio.", android.widget.Toast.LENGTH_SHORT).show()
                     }
+                } else {
+                    android.widget.Toast.makeText(context, "Failed to download audio.", android.widget.Toast.LENGTH_SHORT).show()
                 }
-            }
-            
-            if (result != android.speech.tts.TextToSpeech.SUCCESS) {
-                _status.update { "idle" }
-                android.widget.Toast.makeText(context, "Failed to initiate audio download.", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }
