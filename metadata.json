@@ -1,0 +1,6 @@
+{
+  "name": "Auditext",
+  "description": "A Text-to-Speech studio app for professional-grade audio generation using multiple AI providers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
