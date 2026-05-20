@@ -1,21 +1,91 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+  <img src="app/src/main/res/drawable/perfect_auditext_icon_1779293519366.png" width="128" height="128" alt="Auditext Logo">
+  <h1>Auditext Studio 🎙️</h1>
+  <p><strong>The Ultimate Open-Source Text-to-Speech Generation Engine for Android.</strong></p>
+
+  <p>
+    <a href="#features">Features</a> •
+    <a href="#how-it-works">How it Works</a> •
+    <a href="#tech-stack">Tech Stack</a> •
+    <a href="#installation">Installation</a> 
+  </p>
 </div>
 
-# Run and deploy your AI Studio app
+---
 
-This contains everything you need to run your app locally.
+## ⚡ What is Auditext?
 
-View your app in AI Studio: https://ai.studio/apps/34998e06-92e5-4983-b4f2-e67e0d2e19d3
+**Auditext** is a professional-grade Text-to-Speech (TTS) studio built for modern creators. Why limit yourself to one AI model? Auditext acts as a unified hub allowing you to dynamically generate hyper-realistic audio using your favorite AI providers—all wrapped in a sleek, offline-first Android interface.
 
-## Run Locally
+Whether you're developing audiobooks, narrating videos, crafting podcasts, or studying languages, Auditext hands you the director's chair.
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+---
 
+## 🔥 Key Features
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+*   **🎭 Multi-Provider Support:** Switch seamlessly between **Native (Offline)**, **Gemini**, **OpenAI**, **ElevenLabs**, **Deepgram**, and **Cartesia**.
+*   **🧠 Emotional Intelligence:** Pre-built emotion profiles (Happy, Sad, Angry, Whispering) that automatically adjust baseline playback speed and tone for organic delivery.
+*   **🎛️ Precision Controls:** Real-time speed tuning sliders and voice profile selection.
+*   **📚 Local Session History:** Never lose a generation. Every prompt, voice, and setting is backed up locally using a persistent Room SQLite database.
+*   **🔒 Secure API Management:** Encrypted DataStore preferences allow you to bring your own API keys (BYOK) for third-party integrations safely.
+*   **🎨 "Charcoal Studio" UI:** A deeply refined, distraction-free aesthetic built entirely in Jetpack Compose Material 3.
+
+---
+
+## 🛠️ Tech Stack
+
+Auditext is built with modern, production-ready Android components:
+
+*   **Language:** Kotlin
+*   **UI Framework:** Jetpack Compose (Material 3)
+*   **Architecture:** Clean MVVM (Model-View-ViewModel) + StateFlow
+*   **Local Storage:** Room Database (Offline History), DataStore Preferences (Secure Settings)
+*   **Async/Concurrency:** Kotlin Coroutines & Flow
+*   **Audio Engine:** Centralized `TtsManager` scaling to HTTP buffers.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+*   Android Studio Ladybug (or newer)
+*   Java Development Kit (JDK) 17+
+
+### Installation & Run
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/auditext.git
+    cd auditext
+    ```
+
+2.  **Open in Android Studio:**
+    Open the project in Android Studio and let Gradle sync.
+
+3.  **Run the App:**
+    Connect your Android device or start an emulator and hit **Run** (`Shift + F10`).
+
+---
+
+## 🔑 AI Provider Setup (BYOK)
+Auditext uses a Bring-Your-Own-Key model. 
+1. Open the app and tap the **⚙️ Settings** icon.
+2. Select your desired AI provider from the dropdown.
+3. Paste your API Key and tap **Save**.
+*Note: If no API key is provided, the engine gracefully falls back to the high-performance Native Offline TTS.*
+
+---
+
+## 🤝 Contributing
+Want to add a new AI Provider? Fix a UI glitch? PRs are absolutely welcome! 
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingVoiceEngine`)
+3. Commit your Changes (`git commit -m 'Add some AmazingVoiceEngine'`)
+4. Push to the Branch (`git push origin feature/AmazingVoiceEngine`)
+5. Open a Pull Request
+
+---
+
+<div align="center">
+  <i>If you find Auditext helpful, <b>leave a ⭐ on this repository!</b></i>
+</div>
