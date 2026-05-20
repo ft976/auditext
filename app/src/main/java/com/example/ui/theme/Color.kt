@@ -11,6 +11,7 @@ val SoftWhite = Color(0xFFF5F5F5)
 
 val AccentBlue = Color(0xFF5E6AD2)
 val AccentPurple = Color(0xFF9061F9)
+val DashboardPurple = Color(0xFF9654FF)
 
 val ErrorRed = Color(0xFFEF4444)
 
@@ -21,3 +22,9 @@ val VoiceOrange = Color(0xFFF97316)
 val VoiceIndigo = Color(0xFF6366F1)
 val VoiceSlate = Color(0xFF334155)
 val VoicePurple = Color(0xFFA855F7)
+
+val LightBackground = Color(0xFFFDF4FF)
+val LightSurface = Color(0xFFFFFFFF)
+val LightOnSurface = Color(0xFF1C1B1F)
+val LightOnBackground = Color(0xFF1C1B1F)
+

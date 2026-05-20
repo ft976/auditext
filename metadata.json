@@ -1,6 +1,6 @@
 {
   "name": "Auditext",
-  "description": "A Text-to-Speech studio app for professional-grade audio generation using multiple AI providers.",
+  "description": "The professional-grade Text-to-Speech studio for creators. Generate hyper-realistic audio using multiple AI providers or high-quality offline voices.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

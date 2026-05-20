@@ -38,16 +38,18 @@ fun HistoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Session History", fontWeight = FontWeight.Bold, color = SoftWhite) },
+                title = { Text("Session History", fontWeight = FontWeight.Bold, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = SoftWhite)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CharcoalSurface)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = DashboardPurple
+                )
             )
         },
-        containerColor = CharcoalBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         if (historyItems.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -84,14 +86,14 @@ fun HistoryCard(item: HistoryEntity, onRestore: () -> Unit, onDelete: () -> Unit
     val dateStr = sdf.format(Date(item.timestamp))
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = CharcoalSurfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = item.text,
-                color = SoftWhite,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 16.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis

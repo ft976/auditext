@@ -16,4 +16,7 @@ interface HistoryDao {
 
     @Query("DELETE FROM history_items WHERE id = :id")
     suspend fun deleteHistory(id: String)
+
+    @Query("SELECT * FROM history_items WHERE isDownloaded = 1 ORDER BY timestamp DESC")
+    fun getDownloadedHistory(): Flow<List<HistoryEntity>>
 }

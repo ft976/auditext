@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -21,11 +25,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.*
 import com.example.model.Emotion
 import com.example.model.Voice
@@ -39,7 +46,8 @@ import kotlinx.coroutines.delay
 fun StudioScreen(
     viewModel: StudioViewModel,
     onNavigateToSettings: () -> Unit,
-    onNavigateToHistory: () -> Unit
+    onNavigateToHistory: () -> Unit,
+    onNavigateToAbout: () -> Unit
 ) {
     val text by viewModel.text.collectAsStateWithLifecycle()
     val emotion by viewModel.emotion.collectAsStateWithLifecycle()
@@ -47,15 +55,52 @@ fun StudioScreen(
     val voice by viewModel.voice.collectAsStateWithLifecycle()
     val status by viewModel.status.collectAsStateWithLifecycle()
     val language by viewModel.language.collectAsStateWithLifecycle()
+    val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
+    val lastGeneratedItem by viewModel.lastGeneratedItem.collectAsStateWithLifecycle()
+    val playbackPosition by viewModel.playbackPosition.collectAsStateWithLifecycle()
+    val playbackDuration by viewModel.playbackDuration.collectAsStateWithLifecycle()
+    val isAudioPlaying by viewModel.isAudioPlaying.collectAsStateWithLifecycle()
+    val isAnalyzingEmotion by viewModel.isAnalyzingEmotion.collectAsStateWithLifecycle()
 
     var quoteIndex by remember { mutableStateOf(0) }
+    val context = LocalContext.current
+    val linkedInUrl = "https://www.linkedin.com/in/rehan-ahmad-863386382?utm_source=share_via&utm_content=profile&utm_medium=member_android"
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { viewModel.importTextFromFile(it) }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Auditext Studio", fontWeight = FontWeight.Bold, color = SoftWhite) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CharcoalSurface),
+                title = { 
+                    Text(
+                        "Auditext", 
+                        fontWeight = FontWeight.ExtraBold, 
+                        color = Color.White,
+                        letterSpacing = 1.sp
+                    ) 
+                },
+                navigationIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.auditext_icon_ultra_bold_1779298671594),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        tint = Color.Unspecified
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = DashboardPurple
+                ),
                 actions = {
+                    IconButton(onClick = onNavigateToAbout) {
+                        Icon(Icons.Default.Info, contentDescription = "About", tint = SoftWhite)
+                    }
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Default.History, contentDescription = "History", tint = SoftWhite)
                     }
@@ -65,7 +110,7 @@ fun StudioScreen(
                 }
             )
         },
-        containerColor = CharcoalBackground
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -78,11 +123,35 @@ fun StudioScreen(
 
             // Status Card
             item {
-                StatusCard(status = status, onStop = { viewModel.stopPlaying() })
+                PlaybackCard(
+                    status = status,
+                    duration = playbackDuration,
+                    position = playbackPosition,
+                    isPlaying = isAudioPlaying,
+                    isAnalyzingEmotion = isAnalyzingEmotion,
+                    onTogglePlay = { viewModel.togglePlayback() },
+                    onStop = { viewModel.stopPlaying() }
+                )
             }
 
-            // Script Input
+            // Script Header with Document Support
             item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Script", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    TextButton(
+                        onClick = { filePicker.launch("text/plain") },
+                        enabled = !isImporting
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (isImporting) "Importing..." else "Import .txt", color = AccentBlue)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 ScriptInput(
                     text = text,
                     onTextChange = { viewModel.setText(it) }
@@ -95,15 +164,21 @@ fun StudioScreen(
                     status = status,
                     textEmpty = text.isEmpty(),
                     speed = speed,
+                    isAudioPlaying = isAudioPlaying,
                     onGenerate = { viewModel.generateAndSpeak() },
+                    onTogglePlay = { viewModel.togglePlayback() },
                     onStop = { viewModel.stopPlaying() },
-                    onSpeedChange = { viewModel.setSpeed(it) }
+                    onSpeedChange = { viewModel.setSpeed(it) },
+                    onDownload = {
+                        lastGeneratedItem?.let { viewModel.downloadAudio(it) }
+                            ?: android.widget.Toast.makeText(context, "Generate audio first to download", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                 )
             }
 
             // Emotion Grid
             item {
-                Text("Emotion", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Emotion", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -120,7 +195,7 @@ fun StudioScreen(
 
             // Voice Profiles
             item {
-                Text("Voice", color = SoftWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Voice", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     VOICES.forEach { v ->
@@ -144,17 +219,17 @@ fun StudioScreen(
                         value = language,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Language", color = OffWhite) },
+                        label = { Text("Language", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         trailingIcon = {
                             ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = CharcoalSurfaceVariant,
-                            unfocusedContainerColor = CharcoalSurfaceVariant,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             focusedBorderColor = AccentBlue,
                             unfocusedBorderColor = Color.Transparent,
-                            focusedTextColor = SoftWhite,
-                            unfocusedTextColor = SoftWhite
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                         ),
                         modifier = Modifier
                             .menuAnchor(MenuAnchorType.PrimaryNotEditable)
@@ -164,11 +239,11 @@ fun StudioScreen(
                     ExposedDropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false },
-                        modifier = Modifier.background(CharcoalSurface)
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                     ) {
                         LANGUAGES.forEach { selectionOption ->
                             DropdownMenuItem(
-                                text = { Text(selectionOption, color = SoftWhite) },
+                                text = { Text(selectionOption, color = MaterialTheme.colorScheme.onSurface) },
                                 onClick = {
                                     viewModel.setLanguage(selectionOption)
                                     expanded = false
@@ -187,67 +262,129 @@ fun StudioScreen(
                 )
             }
             
+            // Footer with LinkedIn Link
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
+                    Text(
+                        "Created by Rehan Ahmad",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        "Connect on LinkedIn",
+                        color = AccentBlue,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(linkedInUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Cannot open link", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .padding(4.dp)
+                    )
+                }
+            }
+            
             item { Spacer(modifier = Modifier.height(32.dp)) }
         }
     }
 }
 
 @Composable
-fun StatusCard(status: String, onStop: () -> Unit) {
-    val isPlaying = status == "playing"
+fun PlaybackCard(
+    status: String,
+    duration: Int,
+    position: Int,
+    isPlaying: Boolean,
+    isAnalyzingEmotion: Boolean,
+    onTogglePlay: () -> Unit,
+    onStop: () -> Unit
+) {
+    val progress = if (duration > 0) position.toFloat() / duration else 0f
     
-    val infiniteTransition = rememberInfiniteTransition()
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = if (isPlaying) 1.2f else 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp),
-        colors = CardDefaults.cardColors(containerColor = CharcoalSurfaceVariant),
-        shape = RoundedCornerShape(16.dp)
+            .wrapContentHeight(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "Status: ${status.replaceFirstChar { it.uppercase() }}",
-                    color = SoftWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-                if (isPlaying) {
-                    Text("Audio playing...", color = AccentBlue, fontSize = 14.sp)
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when {
+                            isAnalyzingEmotion -> "Analyzing Sentiment..."
+                            status == "generating" -> "Generating Audio..."
+                            else -> "Studio Playback"
+                        },
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        text = if (isAnalyzingEmotion) "AI is choosing emotional tone" else status.replaceFirstChar { it.uppercase() },
+                        color = if (status == "playing" || isAnalyzingEmotion) AccentBlue else Color.Gray,
+                        fontSize = 14.sp
+                    )
+                }
+                
+                if (status == "generating" || isAnalyzingEmotion) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentBlue, strokeWidth = 2.dp)
+                } else if (duration > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onTogglePlay) {
+                            Icon(
+                                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = AccentBlue
+                            )
+                        }
+                        IconButton(onClick = onStop) {
+                            Icon(Icons.Default.Stop, contentDescription = null, tint = ErrorRed)
+                        }
+                    }
                 }
             }
             
-            if (isPlaying) {
-                // simple waveform sim
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    repeat(4) {
-                        Box(
-                            modifier = Modifier
-                                .width(8.dp)
-                                .height((24 * scale * (it + 1)).dp.coerceAtMost(40.dp))
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(AccentBlue)
-                        )
-                    }
+            if (duration > 0) {
+                Spacer(modifier = Modifier.height(16.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = AccentBlue,
+                    trackColor = MaterialTheme.colorScheme.surface
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(formatDuration(position), color = Color.Gray, fontSize = 12.sp)
+                    Text(formatDuration(duration), color = Color.Gray, fontSize = 12.sp)
                 }
             }
         }
     }
+}
+
+fun formatDuration(ms: Int): String {
+    val seconds = (ms / 1000) % 60
+    val minutes = (ms / (1000 * 60)) % 60
+    return String.format("%02d:%02d", minutes, seconds)
 }
 
 @Composable
@@ -261,12 +398,12 @@ fun ScriptInput(text: String, onTextChange: (String) -> Unit) {
                 .fillMaxWidth()
                 .heightIn(min = 200.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = CharcoalSurfaceVariant,
-                unfocusedContainerColor = CharcoalSurfaceVariant,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 focusedBorderColor = AccentBlue,
                 unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = SoftWhite,
-                unfocusedTextColor = SoftWhite
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
             ),
             shape = RoundedCornerShape(16.dp),
             maxLines = 10
@@ -287,12 +424,15 @@ fun ControlsStrip(
     status: String,
     textEmpty: Boolean,
     speed: Float,
+    isAudioPlaying: Boolean,
     onGenerate: () -> Unit,
+    onTogglePlay: () -> Unit,
     onStop: () -> Unit,
-    onSpeedChange: (Float) -> Unit
+    onSpeedChange: (Float) -> Unit,
+    onDownload: () -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CharcoalSurfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -302,15 +442,15 @@ fun ControlsStrip(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (status == "playing") {
+                if (status == "playing" || (status == "idle" && isAudioPlaying)) {
                     Button(
-                        onClick = onStop,
-                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                        onClick = onTogglePlay,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentPurple),
                         modifier = Modifier.weight(1f).height(50.dp)
                     ) {
-                        Icon(Icons.Default.Stop, contentDescription = "Stop")
+                        Icon(if (isAudioPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Stop Audio")
+                        Text(if (isAudioPlaying) "Pause" else "Resume")
                     }
                 } else {
                     Button(
@@ -319,24 +459,32 @@ fun ControlsStrip(
                         colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                         modifier = Modifier.weight(1f).height(50.dp)
                     ) {
-                        Icon(if (status == "generating") Icons.Default.Sync else Icons.Default.PlayArrow, contentDescription = null)
+                        if (status == "generating") {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        }
                         Spacer(Modifier.width(8.dp))
-                        Text(if (status == "generating") "Generating..." else "Generate & Speak")
+                        Text(if (status == "generating") "Generating..." else "Generate & Preview")
                     }
                 }
 
                 Spacer(modifier = Modifier.width(16.dp))
-                IconButton(onClick = { /* Simulated download */ }) {
-                    Icon(Icons.Default.Download, contentDescription = "Download", tint = OffWhite)
+                IconButton(onClick = onDownload) {
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
             
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Speed: ${speed}x", color = OffWhite, modifier = Modifier.width(90.dp))
+                Text("Speed: ${speed}x", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(90.dp))
                 IconButton(onClick = { onSpeedChange(speed - 0.1f) }) {
-                    Icon(Icons.Default.Remove, tint = SoftWhite, contentDescription = "-")
+                    Icon(Icons.Default.Remove, tint = MaterialTheme.colorScheme.onSurface, contentDescription = "-")
                 }
                 Slider(
                     value = speed,
@@ -346,11 +494,11 @@ fun ControlsStrip(
                     colors = SliderDefaults.colors(
                         thumbColor = AccentPurple,
                         activeTrackColor = AccentBlue,
-                        inactiveTrackColor = CharcoalSurface
+                        inactiveTrackColor = MaterialTheme.colorScheme.surface
                     )
                 )
                 IconButton(onClick = { onSpeedChange(speed + 0.1f) }) {
-                    Icon(Icons.Default.Add, tint = SoftWhite, contentDescription = "+")
+                    Icon(Icons.Default.Add, tint = MaterialTheme.colorScheme.onSurface, contentDescription = "+")
                 }
             }
         }
@@ -359,8 +507,8 @@ fun ControlsStrip(
 
 @Composable
 fun EmotionChip(emotion: Emotion, isSelected: Boolean, onClick: () -> Unit) {
-    val bgColor = if (isSelected) AccentPurple else CharcoalSurfaceVariant
-    val contentColor = if (isSelected) Color.White else OffWhite
+    val bgColor = if (isSelected) AccentPurple else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
         color = bgColor,
@@ -381,7 +529,7 @@ fun EmotionChip(emotion: Emotion, isSelected: Boolean, onClick: () -> Unit) {
 @Composable
 fun VoiceCard(voiceProfile: Voice, isSelected: Boolean, onClick: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = if(isSelected) CharcoalSurface else CharcoalSurfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = if(isSelected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant),
         border = if (isSelected) BorderStroke(2.dp, voiceProfile.color) else null,
         modifier = Modifier
             .fillMaxWidth()
@@ -403,11 +551,11 @@ fun VoiceCard(voiceProfile: Voice, isSelected: Boolean, onClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(voiceProfile.name, fontWeight = FontWeight.Bold, color = SoftWhite, fontSize = 18.sp)
-                Text(voiceProfile.description, color = OffWhite, fontSize = 14.sp)
+                Text(voiceProfile.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp)
+                Text(voiceProfile.description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             }
             Surface(
-                color = CharcoalBackground,
+                color = MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
@@ -424,7 +572,7 @@ fun VoiceCard(voiceProfile: Voice, isSelected: Boolean, onClick: () -> Unit) {
 @Composable
 fun QuoteCard(quote: Quote, onNext: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = CharcoalSurfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -433,7 +581,7 @@ fun QuoteCard(quote: Quote, onNext: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "\"${quote.text}\"",
-                color = SoftWhite,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 16.sp,
                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
             )
@@ -443,7 +591,7 @@ fun QuoteCard(quote: Quote, onNext: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("- ${quote.author}", color = OffWhite, fontWeight = FontWeight.Bold)
+                Text("- ${quote.author}", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                 TextButton(onClick = onNext) {
                     Text("Next Quote", color = AccentPurple)
                 }

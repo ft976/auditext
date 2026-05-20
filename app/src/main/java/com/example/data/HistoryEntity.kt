@@ -12,5 +12,7 @@ data class HistoryEntity(
     val emotion: String,
     val language: String,
     val provider: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val localFilePath: String? = null,
+    val isDownloaded: Boolean = false
 )

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +40,7 @@ fun WelcomeScreen(onNavigateToStudio: () -> Unit) {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(CharcoalSurface, CharcoalBackground)
+                    colors = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.background)
                 )
             )
             .windowInsetsPadding(WindowInsets.safeDrawing),
@@ -55,7 +56,7 @@ fun WelcomeScreen(onNavigateToStudio: () -> Unit) {
                     .size(120.dp)
                     .scale(scale)
                     .clip(RoundedCornerShape(32.dp))
-                    .background(CharcoalSurfaceVariant)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .shadow(16.dp, RoundedCornerShape(32.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -71,7 +72,7 @@ fun WelcomeScreen(onNavigateToStudio: () -> Unit) {
             
             Text(
                 text = "Welcome to Auditext",
-                color = SoftWhite,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
@@ -81,7 +82,7 @@ fun WelcomeScreen(onNavigateToStudio: () -> Unit) {
             
             Text(
                 text = "Where words find their voice.",
-                color = OffWhite,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Normal,
                 textAlign = TextAlign.Center
@@ -92,13 +93,15 @@ fun WelcomeScreen(onNavigateToStudio: () -> Unit) {
             Button(
                 onClick = onNavigateToStudio,
                 modifier = Modifier
-                    .fillMaxWidth(0.8f)
-                    .height(56.dp)
-                    .shadow(8.dp, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
+                    .fillMaxWidth(0.9f)
+                    .height(60.dp)
+                    .shadow(12.dp, RoundedCornerShape(20.dp)),
+                shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
             ) {
-                Text("Start Creating", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Start Studio", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
             }
         }
         

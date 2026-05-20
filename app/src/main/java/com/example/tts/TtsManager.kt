@@ -18,6 +18,11 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    private val _isSynthesizing = MutableStateFlow(false)
+    val isSynthesizing: StateFlow<Boolean> = _isSynthesizing.asStateFlow()
+
+    private var onSynthesisComplete: ((Boolean) -> Unit)? = null
+
     init {
         tts = TextToSpeech(context, this)
     }
@@ -27,17 +32,35 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             isInitialized = true
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
-                    _isPlaying.update { true }
+                    if (utteranceId?.startsWith("synth_") == true) {
+                        _isSynthesizing.update { true }
+                    } else {
+                        _isPlaying.update { true }
+                    }
                 }
                 override fun onDone(utteranceId: String?) {
-                    _isPlaying.update { false }
+                    if (utteranceId?.startsWith("synth_") == true) {
+                        _isSynthesizing.update { false }
+                        onSynthesisComplete?.invoke(true)
+                        onSynthesisComplete = null
+                    } else {
+                        _isPlaying.update { false }
+                    }
                 }
                 override fun onError(utteranceId: String?) {
-                    _isPlaying.update { false }
+                    if (utteranceId?.startsWith("synth_") == true) {
+                        _isSynthesizing.update { false }
+                        onSynthesisComplete?.invoke(false)
+                        onSynthesisComplete = null
+                    } else {
+                        _isPlaying.update { false }
+                    }
                 }
             })
         }
     }
+
+    private var voiceBasePitch = 1.0f
 
     fun setLanguage(lang: String) {
         val locale = when (lang) {
@@ -49,38 +72,78 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             "Korean" -> Locale.Builder().setLanguage("ko").build()
             "Portuguese" -> Locale.Builder().setLanguage("pt").build()
             "Chinese" -> Locale.Builder().setLanguage("zh").build()
+            "Hindi" -> Locale("hi", "IN")
             else -> Locale.US
         }
-        tts?.language = locale
+        tts?.setLanguage(locale)
     }
 
     fun setVoiceProfile(voiceId: String) {
-        // Fallback simulation for distinct voices using pitch modifiers
-        val pitch = when (voiceId) {
-            "nova" -> 1.2f
-            "alloy" -> 1.0f
-            "echo" -> 0.8f
-            "fable" -> 1.1f
-            "onyx" -> 0.6f
-            "shimmer" -> 1.4f
-            else -> 1.0f
-        }
-        tts?.setPitch(pitch)
-    }
-
-    fun speak(text: String, emotion: Emotion, customSpeed: Float) {
         if (!isInitialized) return
         
+        // Fallback simulation for distinct voices using pitch modifiers
+        voiceBasePitch = when (voiceId) {
+            "nova" -> 1.15f
+            "alloy" -> 1.0f
+            "echo" -> 0.85f
+            "fable" -> 1.05f
+            "onyx" -> 0.7f
+            "shimmer" -> 1.25f
+            else -> 1.0f
+        }
+        tts?.setPitch(voiceBasePitch)
+
+        try {
+            // Attempt to select a high-quality human-like voice if available for the current language
+            val voices = tts?.voices
+            val currentLang = tts?.language
+            if (voices != null && currentLang != null) {
+                val matchingVoices = voices.filter { it.locale.language == currentLang.language && !it.isNetworkConnectionRequired }
+                // For different voice profiles, try to mix up male/female variants if available, or just use the highest quality
+                val selectedVoice = matchingVoices.firstOrNull { it.name.contains("network", ignoreCase = true) } 
+                    ?: matchingVoices.firstOrNull { it.quality >= 400 } // QUALITY_HIGH = 400
+                    ?: matchingVoices.firstOrNull()
+                
+                if (selectedVoice != null) {
+                    tts?.voice = selectedVoice
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore if voices cannot be accessed
+        }
+    }
+
+    fun speak(text: String, emotion: Emotion, customSpeed: Float): Boolean {
+        if (!isInitialized) return false
+        
         // Emotion provides a base speed modifier, customSpeed scales it further.
-        val finalSpeed = emotion.speed * customSpeed
+        val finalSpeed = (emotion.speed * customSpeed).coerceIn(0.5f, 2.0f)
         tts?.setSpeechRate(finalSpeed)
         
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "auditext_utterance")
+        // Combine voice base pitch with emotional pitch
+        val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
+        tts?.setPitch(finalPitch)
+        
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "auditext_utterance")
+        return result == TextToSpeech.SUCCESS
     }
 
     fun stop() {
         tts?.stop()
         _isPlaying.update { false }
+    }
+
+    fun downloadToFile(text: String, emotion: Emotion, customSpeed: Float, file: java.io.File, utteranceId: String, callback: ((Boolean) -> Unit)? = null): Int {
+        if (!isInitialized) return TextToSpeech.ERROR
+        
+        onSynthesisComplete = callback
+        val finalSpeed = (emotion.speed * customSpeed).coerceIn(0.5f, 2.0f)
+        tts?.setSpeechRate(finalSpeed)
+
+        val finalPitch = (voiceBasePitch * emotion.pitch).coerceIn(0.5f, 2.0f)
+        tts?.setPitch(finalPitch)
+        
+        return tts?.synthesizeToFile(text, null, file, "synth_$utteranceId") ?: TextToSpeech.ERROR
     }
 
     fun shutdown() {

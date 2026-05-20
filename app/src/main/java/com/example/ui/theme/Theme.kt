@@ -26,11 +26,25 @@ private val DarkColorScheme =
     error = ErrorRed
   )
 
-private val LightColorScheme = DarkColorScheme // Force dark theme aesthetically
+private val LightColorScheme =
+  lightColorScheme(
+    primary = AccentBlue,
+    secondary = AccentPurple,
+    tertiary = VoiceGreen,
+    background = LightBackground,
+    surface = LightSurface,
+    surfaceVariant = OffWhite,
+    onPrimary = SoftWhite,
+    onSecondary = SoftWhite,
+    onBackground = LightOnBackground,
+    onSurface = LightOnSurface,
+    onSurfaceVariant = LightOnSurface,
+    error = ErrorRed
+  )
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = true, // Force Dark theme for the "Charcoal Studio" vibe
+  darkTheme: Boolean = isSystemInDarkTheme(),
   // Dynamic color is disabled to maintain the specific aesthetic
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
